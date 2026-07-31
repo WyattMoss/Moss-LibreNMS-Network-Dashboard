@@ -704,21 +704,14 @@
     let up = 0, down = 0;
     const sample = state.devices;
     const results = await Promise.all(sample.map(d =>
-      apiGet('/devices/' + d.device_id + '/ports').catch(()=> ({ ports: [] }))
-    ));
+      apiGet('/devices/' + d.device_id + '/ports?columns=ifName,ifOperStatus,ifAdminStatus')    ));
     results.forEach(r => {
       (r.ports || []).forEach(p => {
-        if(string(p.ifOperStatus).toLowerCase() === 'up') up++;
-        else if(string(p.ifOperStatus).toLowerCase === 'down' && p.ifAdminStatus === 'up') down++;
+        if(p.ifOperStatus === 'up') up++;
+        else if(p.ifOperStatus === 'down' && p.ifAdminStatus === 'up') down++;
       });
     });
 
-    console.log({
-    up,
-    down,
-    sampleDevices: sample.length,
-    results
-    });
 
     state.portsUp = up;
     state.portsDown = down;

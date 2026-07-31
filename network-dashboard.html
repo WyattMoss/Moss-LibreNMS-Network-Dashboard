@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOC // Network Pulse</title>
+<style>
+  :root{
+    --bg:          #0a0d12;
+    --panel:       #10141c;
+    --panel-2:     #151b26;
+    --line:        #1e2531;
+    --text:        #dfe4ea;
+    --muted:       #6b7488;
+    --good:        #34d399;
+    --good-dim:    #1a4d3d;
+    --warn:        #f5a623;
+    --warn-dim:    #4d3a10;
+    --crit:        #f04360;
+    --crit-dim:    #4d1622;
+    --info:        #4c9fff;
+    --mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  ::selection{ background:var(--info); color:#000; }
+
+  /* ---------- Ticker ---------- */
+  #ticker-wrap{
+    height:30px;
+    background:#000;
+    border-bottom:1px solid var(--line);
+    overflow:hidden;
+    position:relative;
+    display:flex;
+    align-items:center;
+  }
+  #ticker-wrap::before{
+    content:'LIVE';
+    position:absolute; left:0; top:0; bottom:0;
+    display:flex; align-items:center;
+    padding:0 10px;
+    background:var(--crit);
+    color:#000;
+    font:700 10px var(--mono);
+    letter-spacing:1px;
+    z-index:2;
+  }
+  #ticker-track{
+    display:flex;
+    white-space:nowrap;
+    padding-left:60px;
+    animation:scroll-left 40s linear infinite;
+    font:12px var(--mono);
+    color:var(--muted);
+  }
+  #ticker-track span{ padding-right:48px; }
+  #ticker-track span.tick-crit{ color:var(--crit); }
+  #ticker-track span.tick-warn{ color:var(--warn); }
+  #ticker-track span.tick-good{ color:var(--good); }
+  @keyframes scroll-left{
+    0%{ transform:translateX(0); }
+    100%{ transform:translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #ticker-track{ animation:none; overflow-x:auto; }
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:16px 24px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, var(--panel), var(--bg));
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--muted);
+    box-shadow:0 0 0 4px rgba(255,255,255,0.03);
+  }
+  .brand-dot.on{ background:var(--good); box-shadow:0 0 10px var(--good); }
+  .brand-dot.off{ background:var(--crit); box-shadow:0 0 10px var(--crit); }
+  .brand h1{
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+  }
+  .brand h1 span{ color:var(--muted); font-weight:500; }
+  .brand small{
+    display:block;
+    font:11px var(--mono);
+    color:var(--muted);
+    letter-spacing:0.5px;
+    margin-top:2px;
+  }
+
+  .header-controls{ display:flex; align-items:center; gap:10px; }
+  .clock{
+    font:13px var(--mono);
+    color:var(--muted);
+    min-width:170px;
+    text-align:right;
+  }
+
+  button{
+    font-family:var(--sans);
+    cursor:pointer;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    border-radius:6px;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:600;
+    transition:border-color .15s, background .15s;
+  }
+  button:hover{ border-color:var(--info); }
+  button:focus-visible, input:focus-visible, select:focus-visible{
+    outline:2px solid var(--info);
+    outline-offset:2px;
+  }
+  button.primary{ background:var(--info); border-color:var(--info); color:#04101f; }
+  button.primary:hover{ filter:brightness(1.1); }
+  button.ghost{ background:transparent; }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+
+  select{
+    font-family:var(--mono);
+    font-size:12px;
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:7px 10px;
+  }
+
+  main{ padding:24px; max-width:1400px; margin:0 auto; }
+
+  /* ---------- Setup screen ---------- */
+  #setup{
+    max-width:520px;
+    margin:80px auto;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:32px;
+  }
+  #setup h2{
+    font-size:18px;
+    margin-bottom:6px;
+  }
+  #setup p.sub{
+    color:var(--muted);
+    font-size:13px;
+    margin-bottom:24px;
+    line-height:1.5;
+  }
+  .field{ margin-bottom:16px; }
+  .field label{
+    display:block;
+    font:11px var(--mono);
+    text-transform:uppercase;
+    letter-spacing:0.8px;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+  .field input{
+    width:100%;
+    background:#000;
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:6px;
+    font:13px var(--mono);
+  }
+  .field input:focus-visible{ outline:2px solid var(--info); outline-offset:0; }
+  .note{
+    font-size:12px;
+    color:var(--muted);
+    background:var(--panel-2);
+    border-left:3px solid var(--warn);
+    padding:10px 12px;
+    border-radius:4px;
+    line-height:1.5;
+    margin-top:18px;
+  }
+  .note code{ color:var(--warn); }
+  #setup-error{
+    color:var(--crit);
+    font:12px var(--mono);
+    margin-top:10px;
+    min-height:16px;
+  }
+
+  /* ---------- Stat tiles ---------- */
+  .grid-stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:12px;
+    margin-bottom:20px;
+  }
+  .tile{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 18px;
+    position:relative;
+    overflow:hidden;
+  }
+  .tile::before{
+    content:'';
+    position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:var(--line);
+  }
+  .tile.good::before{ background:var(--good); }
+  .tile.warn::before{ background:var(--warn); }
+  .tile.crit::before{ background:var(--crit); }
+  .tile.info::before{ background:var(--info); }
+  .tile .label{
+    font:11px var(--mono);
+    text-transform:uppercase;
+    letter-spacing:0.8px;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  .tile .value{
+    font:700 30px var(--mono);
+    line-height:1;
+  }
+  .tile.good .value{ color:var(--good); }
+  .tile.warn .value{ color:var(--warn); }
+  .tile.crit .value{ color:var(--crit); }
+  .tile.info .value{ color:var(--info); }
+
+  /* ---------- Panels layout ---------- */
+  .layout{
+    display:grid;
+    grid-template-columns:1fr 380px;
+    gap:16px;
+    align-items:start;
+  }
+  @media (max-width:960px){ .layout{ grid-template-columns:1fr; } }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+  }
+  .panel-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.8px;
+    color:var(--text);
+  }
+  .panel-head .count{
+    font:12px var(--mono);
+    color:var(--muted);
+  }
+  .panel-body{ max-height:560px; overflow-y:auto; }
+  .panel-body::-webkit-scrollbar{ width:8px; }
+  .panel-body::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+
+  .search-row{
+    padding:10px 18px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    gap:8px;
+  }
+  .search-row input{
+    flex:1;
+    background:#000;
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:8px 10px;
+    border-radius:6px;
+    font:12px var(--mono);
+  }
+
+  table{ width:100%; border-collapse:collapse; }
+  thead th{
+    position:sticky; top:0;
+    background:var(--panel-2);
+    text-align:left;
+    font:10px var(--mono);
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--muted);
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  thead th:hover{ color:var(--text); }
+  tbody td{
+    padding:10px 14px;
+    font-size:12.5px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--mono);
+  }
+  tbody tr:hover{ background:var(--panel-2); }
+  tbody tr:last-child td{ border-bottom:none; }
+
+  .status-dot{
+    display:inline-block;
+    width:8px; height:8px;
+    border-radius:50%;
+    margin-right:8px;
+    vertical-align:middle;
+  }
+  .status-dot.up{ background:var(--good); box-shadow:0 0 6px var(--good); }
+  .status-dot.down{ background:var(--crit); box-shadow:0 0 6px var(--crit); }
+  .status-dot.disabled{ background:var(--muted); }
+
+  .badge{
+    display:inline-block;
+    font:10px var(--mono);
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    padding:2px 7px;
+    border-radius:4px;
+  }
+  .badge.crit{ background:var(--crit-dim); color:var(--crit); }
+  .badge.warn{ background:var(--warn-dim); color:var(--warn); }
+  .badge.good{ background:var(--good-dim); color:var(--good); }
+
+  /* Alerts list */
+  .alert-item{
+    padding:12px 18px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    gap:10px;
+  }
+  .alert-item:last-child{ border-bottom:none; }
+  .alert-sev{
+    width:4px;
+    border-radius:2px;
+    flex-shrink:0;
+  }
+  .alert-sev.crit{ background:var(--crit); }
+  .alert-sev.warn{ background:var(--warn); }
+  .alert-sev.ok{ background:var(--good); }
+  .alert-content .rule{
+    font-size:12.5px;
+    font-weight:600;
+    margin-bottom:3px;
+  }
+  .alert-content .meta{
+    font:11px var(--mono);
+    color:var(--muted);
+  }
+
+  .empty-state{
+    padding:40px 20px;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+  }
+  .empty-state .big{
+    font-size:28px;
+    margin-bottom:8px;
+  }
+
+  .footer-note{
+    text-align:center;
+    color:var(--muted);
+    font:11px var(--mono);
+    padding:24px 0 10px;
+  }
+
+  .loading-bar{
+    height:2px;
+    background:var(--line);
+    overflow:hidden;
+    position:relative;
+    display:none;
+  }
+  .loading-bar.active{ display:block; }
+  .loading-bar::after{
+    content:'';
+    position:absolute; top:0; left:-30%; height:100%; width:30%;
+    background:var(--info);
+    animation:loadmove 1s linear infinite;
+  }
+  @keyframes loadmove{
+    0%{ left:-30%; }
+    100%{ left:100%; }
+  }
+
+  #app{ display:none; }
+  #app.visible{ display:block; }
+</style>
+</head>
+<body>
+
+<div id="ticker-wrap">
+  <div id="ticker-track"><span>Connect to LibreNMS to begin streaming events&hellip;</span></div>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="brand-dot off" id="connDot"></div>
+    <div>
+      <h1>Network Pulse <span>// NOC Overview</span></h1>
+      <small id="brandSub">not connected</small>
+    </div>
+  </div>
+  <div class="header-controls">
+    <span class="clock" id="clock"></span>
+    <select id="refreshSelect" title="Auto-refresh interval">
+      <option value="0">Manual</option>
+      <option value="30000">Every 30s</option>
+      <option value="60000" selected>Every 60s</option>
+      <option value="300000">Every 5m</option>
+    </select>
+    <button class="ghost" id="refreshBtn">Refresh</button>
+    <button class="ghost" id="settingsBtn">Settings</button>
+  </div>
+</header>
+
+<div class="loading-bar" id="loadingBar"></div>
+
+<main>
+
+  <!-- SETUP -->
+  <div id="setup">
+    <h2>Connect to LibreNMS</h2>
+    <p class="sub">Enter your LibreNMS base URL and API token to pull live device, port, and alert data into this dashboard.</p>
+
+    <div class="field">
+      <label for="baseUrl">LibreNMS Base URL</label>
+      <input id="baseUrl" type="text" placeholder="https://librenms.example.com" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="apiToken">API Token</label>
+      <input id="apiToken" type="password" placeholder="Paste your API token" autocomplete="off" spellcheck="false">
+    </div>
+
+    <button class="primary" id="connectBtn" style="width:100%;">Connect</button>
+    <div id="setup-error"></div>
+
+    <div class="note">
+      Generate a token in LibreNMS under <code>Settings &rarr; API Settings &rarr; Manage tokens</code>. This page calls the LibreNMS API directly from your browser, so the LibreNMS server must send CORS headers allowing this origin, or you'll need to proxy requests through your own backend. Credentials are kept only in this browser tab's memory and are not saved anywhere.
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app">
+
+    <div class="grid-stats">
+      <div class="tile good"><div class="label">Devices Up</div><div class="value" id="statUp">&mdash;</div></div>
+      <div class="tile crit"><div class="label">Devices Down</div><div class="value" id="statDown">&mdash;</div></div>
+      <div class="tile info"><div class="label">Total Devices</div><div class="value" id="statTotal">&mdash;</div></div>
+      <div class="tile warn"><div class="label">Active Alerts</div><div class="value" id="statAlerts">&mdash;</div></div>
+      <div class="tile good"><div class="label">Ports Up</div><div class="value" id="statPortsUp">&mdash;</div></div>
+      <div class="tile crit"><div class="label">Ports Down</div><div class="value" id="statPortsDown">&mdash;</div></div>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Devices</h2>
+          <span class="count" id="deviceCount">0 devices</span>
+        </div>
+        <div class="search-row">
+          <input type="text" id="deviceSearch" placeholder="Filter by hostname, OS, location&hellip;">
+        </div>
+        <div class="panel-body">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="status">Status</th>
+                <th data-sort="hostname">Hostname</th>
+                <th data-sort="os">Platform</th>
+                <th data-sort="uptime">Uptime</th>
+                <th data-sort="location">Location</th>
+              </tr>
+            </thead>
+            <tbody id="deviceTableBody"></tbody>
+          </table>
+          <div class="empty-state" id="deviceEmpty" style="display:none;">
+            <div class="big">&#128225;</div>
+            No devices match this view.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Active Alerts</h2>
+          <span class="count" id="alertCount">0</span>
+        </div>
+        <div class="panel-body" id="alertList">
+          <div class="empty-state">
+            <div class="big">&#9989;</div>
+            No active alerts.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">Last updated <span id="lastUpdated">never</span> &middot; source: <span id="sourceUrl"></span></div>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------------- State ----------------
+  const state = {
+    baseUrl: '',
+    token: '',
+    devices: [],
+    alerts: [],
+    portsUp: 0,
+    portsDown: 0,
+    sortKey: 'status',
+    sortDir: 1,
+    refreshTimer: null
+  };
+
+  const els = {
+    setup: document.getElementById('setup'),
+    app: document.getElementById('app'),
+    baseUrl: document.getElementById('baseUrl'),
+    apiToken: document.getElementById('apiToken'),
+    connectBtn: document.getElementById('connectBtn'),
+    setupError: document.getElementById('setup-error'),
+    connDot: document.getElementById('connDot'),
+    brandSub: document.getElementById('brandSub'),
+    clock: document.getElementById('clock'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    refreshSelect: document.getElementById('refreshSelect'),
+    loadingBar: document.getElementById('loadingBar'),
+    statUp: document.getElementById('statUp'),
+    statDown: document.getElementById('statDown'),
+    statTotal: document.getElementById('statTotal'),
+    statAlerts: document.getElementById('statAlerts'),
+    statPortsUp: document.getElementById('statPortsUp'),
+    statPortsDown: document.getElementById('statPortsDown'),
+    deviceCount: document.getElementById('deviceCount'),
+    deviceTableBody: document.getElementById('deviceTableBody'),
+    deviceEmpty: document.getElementById('deviceEmpty'),
+    deviceSearch: document.getElementById('deviceSearch'),
+    alertCount: document.getElementById('alertCount'),
+    alertList: document.getElementById('alertList'),
+    lastUpdated: document.getElementById('lastUpdated'),
+    sourceUrl: document.getElementById('sourceUrl'),
+    tickerTrack: document.getElementById('ticker-track')
+  };
+
+  // ---------------- Clock ----------------
+  function tickClock(){
+    const now = new Date();
+    els.clock.textContent = now.toLocaleString(undefined, {
+      weekday:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'
+    });
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  // ---------------- API ----------------
+  async function apiGet(path){
+    const url = state.baseUrl.replace(/\/+$/,'') + '/api/v0' + path;
+    const res = await fetch(url, {
+      headers: { 'X-Auth-Token': state.token }
+    });
+    if(!res.ok){
+      const body = await res.text().catch(()=> '');
+      throw new Error('HTTP ' + res.status + ' on ' + path + (body ? (' — ' + body.slice(0,200)) : ''));
+    }
+    return res.json();
+  }
+
+  function setLoading(on){
+    els.loadingBar.classList.toggle('active', on);
+  }
+
+  // ---------------- Connect ----------------
+  els.connectBtn.addEventListener('click', connect);
+  els.baseUrl.addEventListener('keydown', e=>{ if(e.key==='Enter') connect(); });
+  els.apiToken.addEventListener('keydown', e=>{ if(e.key==='Enter') connect(); });
+
+  async function connect(){
+    const url = els.baseUrl.value.trim();
+    const token = els.apiToken.value.trim();
+    els.setupError.textContent = '';
+
+    if(!url || !token){
+      els.setupError.textContent = 'Both a base URL and an API token are required.';
+      return;
+    }
+    if(!/^https?:\/\//i.test(url)){
+      els.setupError.textContent = 'Base URL must start with http:// or https://';
+      return;
+    }
+
+    state.baseUrl = url;
+    state.token = token;
+    els.connectBtn.disabled = true;
+    els.connectBtn.textContent = 'Connecting…';
+
+    try{
+      await apiGet('/devices');
+      els.setup.style.display = 'none';
+      els.app.classList.add('visible');
+      els.connDot.classList.remove('off');
+      els.connDot.classList.add('on');
+      els.brandSub.textContent = state.baseUrl.replace(/^https?:\/\//,'');
+      els.sourceUrl.textContent = state.baseUrl;
+      applyRefreshInterval();
+      refreshAll();
+    }catch(err){
+      const hint = (err.message || '').toLowerCase().includes('failed to fetch')
+        ? ' This is usually CORS, mixed HTTP/HTTPS content, or an untrusted TLS cert — see the note below, or run the included proxy and point this field at it instead.'
+        : '';
+      els.setupError.textContent = 'Connection failed: ' + err.message + '.' + hint;
+    }finally{
+      els.connectBtn.disabled = false;
+      els.connectBtn.textContent = 'Connect';
+    }
+  }
+
+  els.settingsBtn.addEventListener('click', ()=>{
+    clearInterval(state.refreshTimer);
+    els.app.classList.remove('visible');
+    els.setup.style.display = 'block';
+    els.connDot.classList.remove('on');
+    els.connDot.classList.add('off');
+    els.brandSub.textContent = 'not connected';
+  });
+
+  els.refreshBtn.addEventListener('click', refreshAll);
+  els.refreshSelect.addEventListener('change', applyRefreshInterval);
+
+  function applyRefreshInterval(){
+    clearInterval(state.refreshTimer);
+    const ms = parseInt(els.refreshSelect.value, 10);
+    if(ms > 0){
+      state.refreshTimer = setInterval(refreshAll, ms);
+    }
+  }
+
+  // ---------------- Data refresh ----------------
+  async function refreshAll(){
+    setLoading(true);
+    try{
+      const [devicesRes, alertsRes] = await Promise.all([
+        apiGet('/devices'),
+        apiGet('/alerts').catch(()=> ({ alerts: [] }))
+      ]);
+
+      state.devices = devicesRes.devices || [];
+      state.alerts = (alertsRes.alerts || []).filter(a => Number(a.state) === 1);
+
+      await refreshPortCounts();
+
+      renderStats();
+      renderDevices();
+      renderAlerts();
+      updateTicker();
+
+      els.lastUpdated.textContent = new Date().toLocaleTimeString();
+      els.connDot.classList.remove('off');
+      els.connDot.classList.add('on');
+    }catch(err){
+      els.connDot.classList.remove('on');
+      els.connDot.classList.add('off');
+      els.brandSub.textContent = 'error: ' + err.message;
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  async function refreshPortCounts(){
+    // Aggregate port status across a reasonable sample of devices to avoid
+    // hammering the API when there are hundreds of devices.
+    let up = 0, down = 0;
+    const sample = state.devices.slice(0, 40);
+    const results = await Promise.all(sample.map(d =>
+      apiGet('/devices/' + d.device_id + '/ports').catch(()=> ({ ports: [] }))
+    ));
+    results.forEach(r => {
+      (r.ports || []).forEach(p => {
+        if(p.ifOperStatus === 'up') up++;
+        else if(p.ifOperStatus === 'down' && p.ifAdminStatus === 'up') down++;
+      });
+    });
+    state.portsUp = up;
+    state.portsDown = down;
+  }
+
+  // ---------------- Render: stats ----------------
+  function renderStats(){
+    const up = state.devices.filter(d => Number(d.status) === 1 && Number(d.disabled) !== 1).length;
+    const down = state.devices.filter(d => Number(d.status) === 0 && Number(d.disabled) !== 1).length;
+
+    els.statUp.textContent = up;
+    els.statDown.textContent = down;
+    els.statTotal.textContent = state.devices.length;
+    els.statAlerts.textContent = state.alerts.length;
+    els.statPortsUp.textContent = state.portsUp;
+    els.statPortsDown.textContent = state.portsDown;
+  }
+
+  // ---------------- Render: devices ----------------
+  function deviceStatusInfo(d){
+    if(Number(d.disabled) === 1) return { cls:'disabled', label:'Disabled' };
+    if(Number(d.status) === 1) return { cls:'up', label:'Up' };
+    return { cls:'down', label:'Down' };
+  }
+
+  function fmtUptime(sec){
+    sec = Number(sec) || 0;
+    if(!sec) return '—';
+    const d = Math.floor(sec/86400);
+    const h = Math.floor((sec%86400)/3600);
+    const m = Math.floor((sec%3600)/60);
+    if(d>0) return d+'d '+h+'h';
+    if(h>0) return h+'h '+m+'m';
+    return m+'m';
+  }
+
+  function sortedFilteredDevices(){
+    const q = els.deviceSearch.value.trim().toLowerCase();
+    let list = state.devices.filter(d=>{
+      if(!q) return true;
+      const hay = [d.hostname, d.sysName, d.os, d.location, d.hardware].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+    list.sort((a,b)=>{
+      let va, vb;
+      switch(state.sortKey){
+        case 'status': va = Number(a.status); vb = Number(b.status); break;
+        case 'os': va = (a.os||''); vb = (b.os||''); break;
+        case 'uptime': va = Number(a.uptime)||0; vb = Number(b.uptime)||0; break;
+        case 'location': va = (a.location||''); vb = (b.location||''); break;
+        default: va = (a.hostname||''); vb = (b.hostname||'');
+      }
+      if(va < vb) return -1*state.sortDir;
+      if(va > vb) return 1*state.sortDir;
+      return 0;
+    });
+    return list;
+  }
+
+  function renderDevices(){
+    const list = sortedFilteredDevices();
+    els.deviceCount.textContent = list.length + ' / ' + state.devices.length + ' devices';
+    els.deviceTableBody.innerHTML = '';
+    els.deviceEmpty.style.display = list.length ? 'none' : 'block';
+
+    const frag = document.createDocumentFragment();
+    list.forEach(d=>{
+      const info = deviceStatusInfo(d);
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><span class="status-dot ' + info.cls + '"></span>' + info.label + '</td>' +
+        '<td>' + escapeHtml(d.hostname || d.sysName || 'unknown') + '</td>' +
+        '<td>' + escapeHtml(d.os || '—') + '</td>' +
+        '<td>' + fmtUptime(d.uptime) + '</td>' +
+        '<td>' + escapeHtml(d.location || '—') + '</td>';
+      frag.appendChild(tr);
+    });
+    els.deviceTableBody.appendChild(frag);
+  }
+
+  els.deviceSearch.addEventListener('input', renderDevices);
+
+  document.querySelectorAll('thead th[data-sort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.getAttribute('data-sort');
+      if(state.sortKey === key) state.sortDir *= -1;
+      else { state.sortKey = key; state.sortDir = 1; }
+      renderDevices();
+    });
+  });
+
+  // ---------------- Render: alerts ----------------
+  function alertSevClass(sev){
+    sev = (sev||'').toLowerCase();
+    if(sev === 'critical' || sev === 'crit') return 'crit';
+    if(sev === 'warning' || sev === 'warn') return 'warn';
+    return 'ok';
+  }
+
+  function renderAlerts(){
+    els.alertCount.textContent = state.alerts.length;
+    if(!state.alerts.length){
+      els.alertList.innerHTML = '<div class="empty-state"><div class="big">&#9989;</div>No active alerts.</div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    state.alerts
+      .slice()
+      .sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp))
+      .forEach(a=>{
+        const sevCls = alertSevClass(a.severity);
+        const div = document.createElement('div');
+        div.className = 'alert-item';
+        div.innerHTML =
+          '<div class="alert-sev ' + sevCls + '"></div>' +
+          '<div class="alert-content">' +
+            '<div class="rule">' + escapeHtml(a.rule || a.name || 'Alert') + '</div>' +
+            '<div class="meta">' + escapeHtml(a.hostname || '') + ' &middot; ' +
+              '<span class="badge ' + sevCls + '">' + escapeHtml(a.severity || 'unknown') + '</span> &middot; ' +
+              escapeHtml(a.timestamp || '') +
+            '</div>' +
+          '</div>';
+        frag.appendChild(div);
+      });
+    els.alertList.innerHTML = '';
+    els.alertList.appendChild(frag);
+  }
+
+  // ---------------- Ticker ----------------
+  function updateTicker(){
+    const items = [];
+    state.devices.filter(d => Number(d.status) === 0 && Number(d.disabled) !== 1).slice(0, 10).forEach(d=>{
+      items.push({ cls:'tick-crit', text: '● DOWN — ' + (d.hostname || d.sysName) });
+    });
+    state.alerts.slice(0, 10).forEach(a=>{
+      const cls = alertSevClass(a.severity) === 'crit' ? 'tick-crit' : 'tick-warn';
+      items.push({ cls, text: '▲ ALERT — ' + (a.hostname || '') + ': ' + (a.rule || a.name || '') });
+    });
+    if(!items.length){
+      items.push({ cls:'tick-good', text: '✓ All monitored devices reporting normally' });
+    }
+    const html = items.map(i => '<span class="'+i.cls+'">'+escapeHtml(i.text)+'</span>').join('');
+    els.tickerTrack.innerHTML = html + html; // duplicate for seamless loop
+  }
+
+  // ---------------- Utils ----------------
+  function escapeHtml(str){
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+})();
+</script>
+
+</body>
+</html>
